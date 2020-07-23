@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Madcampweek3</string>
-    <string name="title_home">Home</string>
-    <string name="title_dashboard">Dashboard</string>
-    <string name="title_notifications">Notifications</string>
+    <string name="title_capture">Capture</string>
+    <string name="title_note">오답노트</string>
+    <string name="title_mypage">My Page</string>
 </resources>
