@@ -3,4 +3,5 @@
     <string name="title_capture">Capture</string>
     <string name="title_note">오답노트</string>
     <string name="title_mypage">My Page</string>
+    <string name="splash_text">앱제목을 입력하세요.</string>
 </resources>
