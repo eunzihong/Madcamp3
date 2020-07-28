@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string-array name="year">
+        <item >2020</item>
         <item >2019</item>
         <item >2018</item>
         <item >2017</item>
         <item >2016</item>
-        <item >2015</item>
     </string-array>
 
     <string-array name="month">
-        <item >3월</item>
+        <item >수능</item>
         <item >6월</item>
         <item >9월</item>
         <item >수능</item>
     </string-array>
 
     <string-array name="subject">
-        <item >국어</item>
+        <item >수학</item>
         <item >영어</item>
         <item >수학</item>
         <item >한국사</item>

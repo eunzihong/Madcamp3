@@ -1,13 +1,8 @@
 package com.app.madcampweek3.ui.capture;
 
 import android.Manifest;
-import android.content.ClipData;
 import android.content.Intent;
 import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Matrix;
-import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -29,7 +24,6 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
-import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 import androidx.loader.content.CursorLoader;
@@ -37,9 +31,7 @@ import androidx.loader.content.CursorLoader;
 import com.app.madcampweek3.CaptureAdapter;
 import com.app.madcampweek3.CaptureItem;
 import com.app.madcampweek3.R;
-import com.yongbeam.y_photopicker.util.photopicker.PhotoPagerActivity;
-import com.yongbeam.y_photopicker.util.photopicker.PhotoPickerActivity;
-import com.yongbeam.y_photopicker.util.photopicker.utils.YPhotoPickerIntent;
+import com.app.madcampweek3.User;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -52,12 +44,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.lang.reflect.Array;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
 import java.util.UUID;
 
 import static android.app.Activity.RESULT_OK;
@@ -65,7 +56,7 @@ import static android.app.Activity.RESULT_OK;
 public class CaptureFragment extends Fragment {
 
     /*
-    서버에 보낼 정보: 학년, 년도, 월, 과목
+    서버에 보낼 정보: 학년, 년도, 월, 과목 + 문제 번호
      */
     String grade, year, month, subject;
 
@@ -81,9 +72,8 @@ public class CaptureFragment extends Fragment {
     RadioGroup radioGroup;
 
     ArrayList<String> question = new ArrayList<String>();
-    ArrayList<String> answer = new ArrayList<String>();
-
-    private CaptureViewModel homeViewModel;
+    HashMap<String, String> qanda = new HashMap<String, String>();
+    HashMap<String, String> myAnswer = new HashMap<String, String>();
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -150,6 +140,13 @@ public class CaptureFragment extends Fragment {
             @Override
             public void onClick(View view) {
 
+                question.clear();
+                qanda.clear();
+                myAnswer.clear();
+
+                /*
+                OCR을 이용하여 문제 번호와 답(주관식의 경우)을 구해서 변수에 저장함
+                 */
                 for (int i = 0; i < adapter.getCount(); i++) {
                     String imgPath = adapter.getItem(i).getImgPath();
                     NCP ncpThread = new NCP(imgPath);
@@ -161,10 +158,37 @@ public class CaptureFragment extends Fragment {
                     }
                 }
 
-                for(int i=0; i<question.size(); i++){
-                    System.out.println("aaaaaaaaa"+question.get(i));
+                /*
+                위에서 저장된 문제들의 정답을 서버에서 구해옴
+                 */
+                for (int i = 0; i < question.size(); i++) {
+                    String thisQuestion = question.get(i);
+                    GetAnswer getAnswer = new GetAnswer(thisQuestion);
+                    getAnswer.start();
+                    try {
+                        getAnswer.join();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
-                System.out.println(grade+year+month+subject);
+
+                /*
+                틀린 문제를 DB에 넣는 과정
+                 */
+                for (int i = 0; i < question.size(); i++) {
+                    Log.d("aaaaaaa", "aaaaaaaaaaaRealAnswer" + qanda.get(question.get(i)));
+                    Log.d("aaaaaaa", "aaaaaaaaaaaMyAnswer" + myAnswer.get(question.get(i)));
+                    if (!qanda.get(question.get(i)).equals(myAnswer.get(question.get(i)))) {
+                        Log.d("aaaaaaa", "aaaaaaaaaa" + question.get(i) + "번 문제 틀림");
+                        InsertWrong insertWrong = new InsertWrong(question.get(i));
+                        insertWrong.start();
+                        try {
+                            insertWrong.join();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
             }
         });
 
@@ -177,7 +201,6 @@ public class CaptureFragment extends Fragment {
                 intent.setType("image/*");
                 startActivityForResult(Intent.createChooser(intent, "Select Picture"), 10);
             }
-
         });
         return root;
     }
@@ -280,13 +303,31 @@ public class CaptureFragment extends Fragment {
                         JSONArray jsonArray_fields = jsonArray.getJSONObject(i).getJSONArray("fields");
 
                         boolean questionFlag = true;
-                        int k = 0;
+                        boolean answerFlag = false;
+                        String q = "";
+                        int m = 0, n = 0;
 
                         while (questionFlag) {
-                            String inferText = jsonArray_fields.getJSONObject(k++).getString("inferText").replace(".", "");
+                            String inferText = jsonArray_fields.getJSONObject(m++).getString("inferText").replace(".", "");
                             if (isNumeric(inferText)) {
-                                question.add(inferText);
+                                Log.d("aaaa", "aaaaaaaaaQuestion" + inferText);
+                                q = inferText;
+                                question.add(q);
                                 questionFlag = false;
+                            }
+                        }
+
+                        /*
+                        과목이 수학이고 주관식인 경우에만 OCR로 답 확인이 가능함
+                         */
+                        if (subject.equals("수학") && Integer.parseInt(q) >= 21) {
+                            while (!answerFlag) {
+                                String inferText = jsonArray_fields.getJSONObject(n++).getString("inferText").replace(")", "").replace(":", "");
+                                if (inferText.equals("답")) {
+                                    Log.d("aaaa", "aaaaaaaaaMyAnswer" + jsonArray_fields.getJSONObject(n).getString("inferText"));
+                                    myAnswer.put(q, jsonArray_fields.getJSONObject(n).getString("inferText"));
+                                    answerFlag = true;
+                                }
                             }
                         }
                     }
@@ -340,6 +381,103 @@ public class CaptureFragment extends Fragment {
             return true;
         } catch (NumberFormatException e) {
             return false;
+        }
+    }
+
+    public class GetAnswer extends Thread {
+
+        private String question;
+
+        public GetAnswer(String question) {
+            this.question = question;
+        }
+
+        @Override
+        public void run() {
+            String serverUri = "http://ec2-13-125-208-213.ap-northeast-2.compute.amazonaws.com/getAnswer.php";
+            String parameters = "grade=" + grade + "&year=" + year + "&month=" + month + "&subject=" + subject + "&question=" + question;
+            try {
+                URL url = new URL(serverUri);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("POST");
+                connection.setDoInput(true);
+                connection.setUseCaches(false);
+                OutputStream outputStream = connection.getOutputStream();
+                outputStream.write(parameters.getBytes("UTF-8"));
+                outputStream.flush();
+                outputStream.close();
+                InputStream is = connection.getInputStream();
+                InputStreamReader isr = new InputStreamReader(is);
+                BufferedReader reader = new BufferedReader(isr);
+                final StringBuffer buffer = new StringBuffer();
+                String line = reader.readLine();
+                while (line != null) {
+                    buffer.append(line + "\n");
+                    line = reader.readLine();
+                }
+                //읽어온 문자열에서 row(레코드)별로 분리하여 배열로 리턴하기
+                String tempResult = buffer.toString();
+                String result = "";
+
+                    /*
+                    buffer.toString으로 받아온 걸 바로 쓰니까 결과값이 잘못 나와서
+                    result란 변수를 새로 만들어서 isDigit인 것으로만 결과를 새로 만드니 잘 됨
+                     */
+                    for (char t : tempResult.toCharArray()) {
+                    if (Character.isDigit(t)) {
+                        result += t;
+                    }
+                }
+                qanda.put(question, result);
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public class InsertWrong extends Thread {
+
+        private String question;
+
+        public InsertWrong(String question) {
+            this.question = question;
+        }
+
+        @Override
+        public void run() {
+            String serverUri = "http://ec2-13-125-208-213.ap-northeast-2.compute.amazonaws.com/insertWrong.php";
+            String parameters = "user="+ User.email+"&grade=" + grade + "&year=" + year + "&month=" + month + "&subject=" + subject + "&question=" + this.question;
+            try {
+                URL url = new URL(serverUri);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("POST");
+                connection.setDoInput(true);
+                connection.setUseCaches(false);
+
+                OutputStream outputStream = connection.getOutputStream();
+                outputStream.write(parameters.getBytes("UTF-8"));
+                outputStream.flush();
+                outputStream.close();
+
+                InputStream is=connection.getInputStream();
+                InputStreamReader isr= new InputStreamReader(is);
+                BufferedReader reader= new BufferedReader(isr);
+                final StringBuffer buffer= new StringBuffer();
+                String line= reader.readLine();
+                while (line!=null){
+                    buffer.append(line+"\n");
+                    line= reader.readLine();
+                }
+                //읽어온 문자열에서 row(레코드)별로 분리하여 배열로 리턴하기
+                String result = buffer.toString();
+                Log.d("zzzzzzzzzzzz","zzzzzzzzzzResult"+ result);
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
