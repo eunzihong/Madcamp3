@@ -30,8 +30,8 @@ import androidx.loader.content.CursorLoader;
 import com.app.madcampweek3.CaptureAdapter;
 import com.app.madcampweek3.CaptureItem;
 import com.app.madcampweek3.R;
-import com.app.madcampweek3.User;
 import com.app.madcampweek3.api.RetroApi;
+import com.app.madcampweek3.User;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -55,8 +55,6 @@ import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
 import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
@@ -74,8 +72,7 @@ public class CaptureFragment extends Fragment {
             .build();
 
     private RetroApi retroApi = retrofit.create(RetroApi.class);
-
-    String tempAnswer = "";
+    private String tempAnswer = "";
 
     /*
     서버에 보낼 정보: 학년, 년도, 월, 과목 + 문제 번호
@@ -96,6 +93,8 @@ public class CaptureFragment extends Fragment {
     ArrayList<String> question = new ArrayList<String>();
     HashMap<String, String> qanda = new HashMap<String, String>();
     HashMap<String, String> myAnswer = new HashMap<String, String>();
+    ArrayList<String> torchanswer = new ArrayList<String>();
+
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -103,7 +102,6 @@ public class CaptureFragment extends Fragment {
         View root = inflater.inflate(R.layout.fragment_capture, container, false);
         ActivityCompat.requestPermissions(getActivity(), new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 1000);
         ActivityCompat.requestPermissions(getActivity(), new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1000);
-
         /*
         RADIO GROUP
          */
@@ -240,19 +238,34 @@ public class CaptureFragment extends Fragment {
         }
     };
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == 10 && resultCode == RESULT_OK) {
             Uri imgUri = data.getData();
             String imgPath = getRealPathFromUri(imgUri);
-//            File imgfile = new File(getRealPathFromUri(imgUri));
+//            File imgfile = new File(imgPath);
+//            torchAnswer.inferenceImage(imgfile);
+//            try {
+//                File imgfile = null;
+//                InputStream inputStream = getActivity().getContentResolver().openInputStream(imgUri);
+//                Files.copy(InputStream in, Paths.get(imgfile));
+//
+//
+//            } catch (FileNotFoundException e) {
+//                e.printStackTrace();
+//            }
+            Log.d(TAG, "img path print" +imgPath);
+//            File imgfile = new File(imgPath);
             adapter.addItem(new CaptureItem(imgUri, imgPath));
             gridView.setAdapter(adapter);
         } else {
             Toast.makeText(getContext(), "ERROR", Toast.LENGTH_SHORT).show();
         }
     }
+
+
 
 
     // Uri를 절대경로로 바꿔줌
@@ -352,13 +365,14 @@ public class CaptureFragment extends Fragment {
                                     answerFlag = true;
                                 }
                             }
-                        }
-                        else{
-                            File imgfile = new File(imgPath);
-                            inferenceImage(imgfile);
+                        }else{
+                            Log.d(TAG, "inside else");
+                            File imgfile = new File(imageFile);
+                            tempAnswer = inferenceImage(i, imgfile);
+                            Log.d(TAG, "temp answer is "+tempAnswer);
                             myAnswer.put(q, tempAnswer);
-                            answerFlag = true;
                         }
+                //*******************************************
                     }
                 } catch (Exception e) {
                 }
@@ -477,6 +491,7 @@ public class CaptureFragment extends Fragment {
         @Override
         public void run() {
             String serverUri = "http://ec2-13-125-208-213.ap-northeast-2.compute.amazonaws.com/insertWrong.php";
+
             String parameters = "user="+ User.email+"&grade=" + grade + "&year=" + year + "&month=" + month + "&subject=" + subject + "&question=" + this.question;
             try {
                 URL url = new URL(serverUri);
@@ -510,7 +525,10 @@ public class CaptureFragment extends Fragment {
         }
     }
 
-    public void inferenceImage(File file){
+
+    public String inferenceImage(int i, File file) throws IOException {
+
+//        Log.e(TAG, "Inference Image inside");
 
         RequestBody requestFile =
                 RequestBody.create(MediaType.parse("multipart/form-data"), file);
@@ -519,32 +537,40 @@ public class CaptureFragment extends Fragment {
         MultipartBody.Part body =
                 MultipartBody.Part.createFormData("image", file.getName(), requestFile);
 
-        Call<String> call = retroApi.inferenceImage(body);
+        Call<String> call = retroApi.inferenceImage("sds", body);
 
-        call.enqueue(new Callback<String>() {
-            @Override
-            public void onResponse(Call<String> call, Response<String> response) {
-                if(response.isSuccessful()){
-                    String result = response.body();
-                    Log.d(TAG, "Inference Image Succeess: " + result);
-                    torchAnswer(result);
-                } else{
-                    Log.d(TAG, "Inference Image Fail");
-                }
-            }
+        String result = call.execute().body();
 
-            @Override
-            public void onFailure(Call<String> call, Throwable t) {
-                Log.d(TAG, "Inference Image Fail:" + t.getMessage());
-            }
-        });
+        return result;
+
+//        call.enqueue(new Callback<String>() {
+//            @Override
+//            public void onResponse(Call<String> call, Response<String> response) {
+//                if(response.isSuccessful()){
+//                    String result = response.body();
+//                    Log.d(TAG, "Inference Image Succeess: " + result);
+//                    adapter.getItem(i).setTorchAnswer(result);
+//                } else{
+//                    Log.d(TAG, "Inference Image Fail");
+//                }
+//            }
+//
+//            private void setTempAnswer(String result) {
+//                tempAnswer = result;
+//            }
+//
+//            @Override
+//            public void onFailure(Call<String> call, Throwable t) {
+//                Log.d(TAG, "Inference Image Fail:" + t.getMessage());
+//            }
+//        });
+//
+
     }
 
-    public void torchAnswer(String result){
-        tempAnswer = result;
-    }
+//    public void setTempAnswer(String res)   { tempAnswer = res; }
 
-
+    public String getTempAnswer() { return tempAnswer;}
 
 
 }
