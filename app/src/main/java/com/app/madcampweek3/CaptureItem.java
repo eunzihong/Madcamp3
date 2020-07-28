@@ -1,6 +1,5 @@
 package com.app.madcampweek3;
 
-import android.graphics.Bitmap;
 import android.net.Uri;
 
 public class CaptureItem {

@@ -15,7 +15,6 @@ import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.GridView;
-import android.widget.ImageView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Spinner;
@@ -32,6 +31,7 @@ import com.app.madcampweek3.CaptureAdapter;
 import com.app.madcampweek3.CaptureItem;
 import com.app.madcampweek3.R;
 import com.app.madcampweek3.User;
+import com.app.madcampweek3.api.RetroApi;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -51,9 +51,31 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.UUID;
 
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
+
 import static android.app.Activity.RESULT_OK;
 
 public class CaptureFragment extends Fragment {
+
+    // Retrofit http communication api setting
+    private String BASE_URL = "http://192.249.19.242:6080/";
+    private String TAG = "TAG";
+
+    private Retrofit retrofit = new Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build();
+
+    private RetroApi retroApi = retrofit.create(RetroApi.class);
+
+    String tempAnswer = "";
 
     /*
     서버에 보낼 정보: 학년, 년도, 월, 과목 + 문제 번호
@@ -224,7 +246,7 @@ public class CaptureFragment extends Fragment {
         if (requestCode == 10 && resultCode == RESULT_OK) {
             Uri imgUri = data.getData();
             String imgPath = getRealPathFromUri(imgUri);
-
+//            File imgfile = new File(getRealPathFromUri(imgUri));
             adapter.addItem(new CaptureItem(imgUri, imgPath));
             gridView.setAdapter(adapter);
         } else {
@@ -314,6 +336,7 @@ public class CaptureFragment extends Fragment {
                                 q = inferText;
                                 question.add(q);
                                 questionFlag = false;
+
                             }
                         }
 
@@ -329,6 +352,12 @@ public class CaptureFragment extends Fragment {
                                     answerFlag = true;
                                 }
                             }
+                        }
+                        else{
+                            File imgfile = new File(imgPath);
+                            inferenceImage(imgfile);
+                            myAnswer.put(q, tempAnswer);
+                            answerFlag = true;
                         }
                     }
                 } catch (Exception e) {
@@ -480,5 +509,42 @@ public class CaptureFragment extends Fragment {
             }
         }
     }
+
+    public void inferenceImage(File file){
+
+        RequestBody requestFile =
+                RequestBody.create(MediaType.parse("multipart/form-data"), file);
+
+        // MultipartBody.Part is used to send also the actual file name
+        MultipartBody.Part body =
+                MultipartBody.Part.createFormData("image", file.getName(), requestFile);
+
+        Call<String> call = retroApi.inferenceImage(body);
+
+        call.enqueue(new Callback<String>() {
+            @Override
+            public void onResponse(Call<String> call, Response<String> response) {
+                if(response.isSuccessful()){
+                    String result = response.body();
+                    Log.d(TAG, "Inference Image Succeess: " + result);
+                    torchAnswer(result);
+                } else{
+                    Log.d(TAG, "Inference Image Fail");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<String> call, Throwable t) {
+                Log.d(TAG, "Inference Image Fail:" + t.getMessage());
+            }
+        });
+    }
+
+    public void torchAnswer(String result){
+        tempAnswer = result;
+    }
+
+
+
 
 }
